@@ -1,4 +1,8 @@
-use std::{net::SocketAddr, fs::{File, OpenOptions}, io::{BufRead, BufReader, Read}};
+use std::{
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader},
+    net::SocketAddr,
+};
 
 use axum::{response::IntoResponse, routing::get, Json, Router};
 use regex::Regex;
@@ -10,27 +14,10 @@ use tower_http::{
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
 use walkdir::WalkDir;
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct RouteNames {
-    name: String,
-    route: String,
-}
-
-
 const CACHE_PATH: &str = "./routes/routes.json";
+
 lazy_static::lazy_static! {
     static ref HTML_TITLE: Regex = Regex::new(r".*<title>(.*)</title>$").unwrap();
-}
-
-pub fn get_page_title(file: &File) -> Option<String> {
-    let lines = BufReader::new(file).lines().filter_map(|l| l.ok());
-    for line in lines {
-        match HTML_TITLE.captures(&line) {
-            Some(c) => return Some(c[1].to_owned()),
-            None => continue,
-        }
-    }
-    None
 }
 
 #[derive(Serialize, Debug, Default, Deserialize)]
@@ -40,17 +27,33 @@ pub struct RouteCache {
     routes: Vec<RouteNames>,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub struct RouteNames {
+    name: String,
+    route: String,
+}
+
+pub fn page_title(file: &File) -> Option<String> {
+    BufReader::new(file)
+        .lines()
+        .filter_map(|l| l.ok())
+        .find_map(|l| {
+            HTML_TITLE
+                .captures(&l)
+                .and_then(|c| c.get(1).and_then(|m| Some(m.as_str().to_owned())))
+        })
+}
+
 pub fn route_cache_len() -> usize {
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .append(false)
         .open(CACHE_PATH)
         .unwrap();
-    let mut buf = String::new();
-    file.read_to_string(&mut buf).unwrap();
-    serde_json::from_str::<RouteCache>(&buf)
+
+    serde_json::from_reader::<_, RouteCache>(file)
         .unwrap_or_default()
         .len
 }
@@ -76,19 +79,14 @@ pub fn add_cache() -> anyhow::Result<()> {
         .into_iter()
         .filter_map(|d| d.ok())
         .filter_map(|d| {
-            let d = d.path();
-            if d.file_name()?.to_str()? != "index.html" {
-                return None;
-            }
-            let f = File::open(d).ok()?;
-
+            let d = d.path().file_name()?.eq("index.html").then_some(d.path())?;
+            let name = page_title(&File::open(d).ok()?)?;
             let route = d
                 .parent()?
                 .iter()
                 .skip(1)
                 .filter_map(|c| Some(c.to_str()?.to_owned() + "/"))
                 .collect::<String>();
-            let name = get_page_title(&f)?;
 
             Some(RouteNames { name, route })
         })
