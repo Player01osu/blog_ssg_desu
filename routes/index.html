@@ -8,5 +8,53 @@
     </head>
     <body>
         <h1>Hello, world!</h1>
+        <div id="route_links"></div>
     </body>
+    <script>
+    const route_links = document.getElementById("route_links");
+    const domain_name = location.protocol + '//' + location.host;
+    function add_para(element, content) {
+        const para = document.createElement("p");
+        const node = document.createTextNode(content);
+        para.appendChild(node);
+
+        element.appendChild(para);
+        return para;
+    }
+
+    function add_a_tag(element, content, link) {
+        const a_tag = document.createElement("a");
+        const node = document.createTextNode(content);
+        a_tag.appendChild(node);
+        a_tag.href = link;
+
+        element.appendChild(a_tag);
+        return a_tag;
+    }
+
+    function fill_links() {
+        const req = new XMLHttpRequest();
+        const eee = domain_name + "/api/v0/routes";
+        console.log(eee);
+        req.open("GET", eee);
+        req.send();
+
+        req.onload = () => {
+            if (req.status !== 200) {
+                const err = "Uh oh, request to '/api/v0/routes' failed: fill_links " + req.status;
+                console.error(err);
+                throw new Error(err);
+            }
+            const links = JSON.parse(req.response);
+
+            for (let i = 0; i < links.length; ++i) {
+                let route = links.routes[i];
+                add_a_tag(route_links, route.name, "/" + route.route);
+                const br = document.createElement("br");
+                route_links.appendChild(br);
+            }
+        }
+    }
+    fill_links();
+    </script>
 </html>
